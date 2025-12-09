@@ -6,8 +6,10 @@ import time
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-TOKEN = "7971116213:AAHVqHyNCuw1ioXnY3UNFEh1v68w6a0sDNM"  # вставь сюда токен бота от @BotFather
+import os
+TOKEN = os.environ.get("TOKEN")
 bot = telebot.TeleBot(TOKEN)
+
 
 # ===== Пример данных =====
 duty_list = [
@@ -172,3 +174,4 @@ threading.Thread(target=reminder_loop, daemon=True).start()
 
 # ===== Запуск бота =====
 bot.polling(none_stop=True)
+
