@@ -1,15 +1,17 @@
 import telebot
 from telebot import types
-from datetime import datetime, timedelta
+from datetime import datetime
 import threading
 import time
 import matplotlib.pyplot as plt
 from io import BytesIO
-
 import os
-TOKEN = os.environ.get("TOKEN")
-bot = telebot.TeleBot(TOKEN)
 
+# ===== Токен =====
+TOKEN = os.environ.get("TOKEN")
+if TOKEN is None:
+    raise ValueError("TOKEN не найден! Добавьте переменную окружения TOKEN на Render.")
+bot = telebot.TeleBot(TOKEN)
 
 # ===== Пример данных =====
 duty_list = [
@@ -22,30 +24,32 @@ events_list = [
     {"name": "Конференция", "date": "2025-12-11", "time": "16:00"}
 ]
 
-polls = {}  # для хранения опросов: {poll_id: {"question": str, "options": [str], "votes": {user_id: option_index}}}
-
+polls = {}  # для хранения опросов
 
 # ===== Функции напоминаний =====
 def reminder_loop():
     while True:
         now = datetime.now()
-        # Дежурства
         for duty in duty_list:
             duty_time = datetime.strptime(duty["date"] + " " + duty["time"], "%Y-%m-%d %H:%M")
             if 0 <= (duty_time - now).total_seconds() <= 60:
-                bot.send_message(duty["user_id"],
-                                 f"Напоминание: сегодня дежурство в {duty['time']}. Пожалуйста, пришлите доказательство (фото кружка).")
+                try:
+                    bot.send_message(duty["user_id"],
+                                     f"Напоминание: сегодня дежурство в {duty['time']}. Пожалуйста, пришлите доказательство (фото кружка).")
+                except Exception as e:
+                    print(f"Ошибка при отправке дежурства: {e}")
 
-        # Мероприятия
         for event in events_list:
             event_time = datetime.strptime(event["date"] + " " + event["time"], "%Y-%m-%d %H:%M")
-            for duty in duty_list:  # уведомляем всех дежурных, можно менять
+            for duty in duty_list:
                 if 0 <= (event_time - now).total_seconds() <= 60:
-                    bot.send_message(duty["user_id"],
-                                     f"Напоминание: мероприятие '{event['name']}' начинается {event['time']}.")
+                    try:
+                        bot.send_message(duty["user_id"],
+                                         f"Напоминание: мероприятие '{event['name']}' начинается {event['time']}.")
+                    except Exception as e:
+                        print(f"Ошибка при отправке мероприятия: {e}")
 
-        time.sleep(60)  # проверка каждую минуту
-
+        time.sleep(60)
 
 # ===== Меню =====
 def main_menu():
@@ -58,7 +62,6 @@ def main_menu():
     markup.add(btn1, btn2, btn3, btn4, btn5)
     return markup
 
-
 # ===== Команды =====
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -66,13 +69,11 @@ def start(message):
                      "Добро пожаловать в Ассистент Парламента! Выберите команду в меню.",
                      reply_markup=main_menu())
 
-
 @bot.message_handler(commands=['about'])
 def about(message):
     bot.send_message(message.chat.id,
                      "Ассистент Парламента — цифровой помощник для управления дежурствами и мероприятиями. "
                      "Функции: напоминания, опросы, новости, мероприятия.", reply_markup=main_menu())
-
 
 @bot.message_handler(commands=['events'])
 def events(message):
@@ -81,12 +82,9 @@ def events(message):
         text += f"{event['name']} — {event['date']} в {event['time']}\n"
     bot.send_message(message.chat.id, text, reply_markup=main_menu())
 
-
 @bot.message_handler(commands=['news'])
 def news(message):
-    # пример новостей
     bot.send_message(message.chat.id, "Новости пока отсутствуют.", reply_markup=main_menu())
-
 
 @bot.message_handler(commands=['duty'])
 def duty(message):
@@ -95,17 +93,14 @@ def duty(message):
         text += f"{duty['name']} — {duty['date']} в {duty['time']}\n"
     bot.send_message(message.chat.id, text, reply_markup=main_menu())
 
-
-# ===== Обработка фото-доказательств =====
+# ===== Фото-доказательства =====
 @bot.message_handler(content_types=['photo'])
 def photo_handler(message):
     bot.reply_to(message, "Спасибо, доказательство получено!")
 
-
 # ===== Создание опроса =====
 @bot.message_handler(commands=['create_poll'])
 def create_poll(message):
-    # Пример: /create_poll Вопрос;Вариант1;Вариант2;Вариант3
     try:
         content = message.text.split(' ', 1)[1]
         question, *options = content.split(';')
@@ -119,12 +114,13 @@ def create_poll(message):
     except:
         bot.send_message(message.chat.id, "Неправильный формат. Пример: /create_poll Вопрос;Вариант1;Вариант2;Вариант3")
 
-
 # ===== Голосование =====
 @bot.message_handler(commands=['vote'])
 def vote_poll(message):
     try:
         parts = message.text.split()
+        if len(parts) < 3:
+            raise ValueError("Неверный формат")
         poll_id = int(parts[1])
         option = int(parts[2]) - 1
         user_id = message.from_user.id
@@ -136,12 +132,14 @@ def vote_poll(message):
     except:
         bot.send_message(message.chat.id, "Неправильный формат. Пример: /vote 1 2")
 
-
-# ===== Показать результаты =====
+# ===== Результаты опроса =====
 @bot.message_handler(commands=['poll_results'])
 def poll_results(message):
     try:
-        poll_id = int(message.text.split()[1])
+        parts = message.text.split()
+        if len(parts) < 2:
+            raise ValueError("Неверный формат")
+        poll_id = int(parts[1])
         if poll_id not in polls:
             bot.send_message(message.chat.id, "Такого опроса нет.")
             return
@@ -152,7 +150,6 @@ def poll_results(message):
         for vote in poll["votes"].values():
             votes_count[vote] += 1
 
-        # Построить график
         plt.figure(figsize=(6,4))
         plt.bar(options, votes_count, color='blue')
         plt.title(poll["question"])
@@ -168,10 +165,8 @@ def poll_results(message):
     except:
         bot.send_message(message.chat.id, "Ошибка при показе результатов. Пример: /poll_results 1")
 
-
-# ===== Запуск напоминаний в отдельном потоке =====
+# ===== Запуск напоминаний =====
 threading.Thread(target=reminder_loop, daemon=True).start()
 
 # ===== Запуск бота =====
 bot.polling(none_stop=True)
-
